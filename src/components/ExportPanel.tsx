@@ -34,7 +34,7 @@ export default function ExportPanel({ files, onDownloadAll, highlightSourceId, o
                 className={`mb-2 p-2 rounded ${highlight ? 'bg-blue-50 border border-blue-200' : ''}`}
               >
                 <div className="font-medium">{o.filename}</div>
-                <div className="mt-1"><a className="text-blue-600" href="#" onClick={(e)=>{e.preventDefault(); const blob=new Blob([o.content as string],{type:'application/xml'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=o.filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);}}>Prenesi</a></div>
+                <div className="mt-1"><a className="text-blue-600" href="#" onClick={(e)=>{e.preventDefault(); const mime=o.type==='report'?'text/plain':'application/xml'; const blob=new Blob([o.content],{type:mime}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=o.filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);}}>Prenesi</a></div>
               </li>
             )
           })}

@@ -41,6 +41,18 @@ export function classifyLine(line: LineItem, profile: Profile): { category: Cate
     return { category: 'water', reason: 'exact service code match' }
   }
 
+  // service-code prefix water
+  if (line.serviceCode) {
+    for (const p of profile.waterPrefixes) {
+      if (line.serviceCode.startsWith(p)) return { category: 'water', reason: 'service code prefix' }
+    }
+  }
+
+  // exact service code waste
+  if (line.serviceCode && profile.wasteExact.includes(line.serviceCode)) {
+    return { category: 'waste', reason: 'exact service code match' }
+  }
+
   // service-code prefix waste
   if (line.serviceCode) {
     for (const p of profile.wastePrefixes) {

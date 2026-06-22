@@ -56,5 +56,7 @@ export function buildDerivedXml(parsed: ParsedInvoice, keepCategory: 'water' | '
   removeSignature(doc)
 
   const serialized = new XMLSerializer().serializeToString(doc)
-  return `<?xml version="1.0" encoding="utf-8"?>\n${serialized}`
+  // Strip any declaration the serializer may have added (browser-dependent) then prepend a consistent one
+  const body = serialized.replace(/^<\?xml[^?]*\?>\s*/i, '')
+  return `<?xml version="1.0" encoding="utf-8"?>\n${body}`
 }

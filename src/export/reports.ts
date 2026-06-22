@@ -1,8 +1,10 @@
 export function csvEscape(v: string | number | null | undefined) {
   if (v === null || v === undefined) return ''
   const s = String(v)
-  if (s.includes(',') || s.includes('\n') || s.includes('"')) return '"' + s.replace(/"/g, '""') + '"'
-  return s
+  // Prefix formula-starting chars to prevent spreadsheet injection (OWASP)
+  const safe = /^[=+\-@\t]/.test(s) ? `'${s}` : s
+  if (safe.includes(',') || safe.includes('\n') || safe.includes('"')) return '"' + safe.replace(/"/g, '""') + '"'
+  return safe
 }
 
 export function buildProcessingReport(rows: Record<string, any>[]) {
