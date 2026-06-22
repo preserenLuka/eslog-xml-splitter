@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<E_SLOG xmlns="urn:eslog:2.00" xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+  <S_BGM>
+    <C_C106>
+      <D_1004>INV-002</D_1004>
+    </C_C106>
+  </S_BGM>
+  <G_SG26>
+    <S_LIN>
+      <D_1082>1</D_1082>
+    </S_LIN>
+    <S_PIA>
+      <C_C212>
+        <D_7140>12211</D_7140>
+      </C_C212>
+    </S_PIA>
+    <S_IMD>
+      <C_C273>
+        <D_7008>ODVAJANJE ODPADNIH VODA</D_7008>
+      </C_C273>
+    </S_IMD>
+    <S_MOA>
+      <D_5025>203</D_5025>
+      <D_5004>200.00</D_5004>
+    </S_MOA>
+    <G_SG30>
+      <S_RFF>
+        <C_C506>
+          <D_1153>AWE</D_1153>
+          <D_1154>AWE-999</D_1154>
+        </C_C506>
+      </S_RFF>
+    </G_SG30>
+  </G_SG26>
+</E_SLOG>
