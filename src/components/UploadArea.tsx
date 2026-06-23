@@ -1,4 +1,5 @@
 import React, { useRef } from 'react'
+import { UploadCloud, FolderOpen } from 'lucide-react'
 import FileCard from './FileCard'
 import { FileEntry } from '../hooks/useProcessor'
 
@@ -19,11 +20,26 @@ export default function UploadArea({ files, addFiles, anyProcessing, hoveredFile
 
   return (
     <div className="w-1/2 pr-4">
-      <div className="border-2 border-dashed rounded p-6 text-center mb-4" onDragOver={(e)=>e.preventDefault()} onDrop={onDrop}>
-        <div className="text-lg font-semibold">Povleci in spusti XML datoteke sem</div>
-        <div className="text-sm text-gray-600">Ali izberi ročno</div>
-        <div className="mt-3">
-          <input ref={inputRef} type="file" multiple onChange={onSelect} />
+      <div
+        className="border-2 border-dashed rounded p-6 text-center mb-4"
+        onDragOver={(e)=>e.preventDefault()}
+        onDrop={onDrop}
+      >
+        <div className="flex flex-col items-center gap-2 mb-4">
+          <UploadCloud size={48} className="text-gray-400" />
+          <div className="text-sm text-gray-500">Povleci in spusti XML datoteke sem</div>
+        </div>
+        <div className="flex flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="px-3 py-2 bg-blue-600 text-white rounded flex items-center gap-2 hover:bg-blue-700 transition-colors"
+          >
+            <FolderOpen size={16} />
+            Izberi datoteke
+          </button>
+          <div className="text-xs text-gray-400">Ni izbrane datoteke</div>
+          <input ref={inputRef} type="file" multiple onChange={onSelect} className="hidden" />
         </div>
       </div>
 
