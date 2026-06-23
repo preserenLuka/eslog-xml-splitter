@@ -59,7 +59,7 @@ function getMoaEl(container: Element, code: string): Element | null {
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100)
 
-function recalculateTotals(doc: Document): void {
+function recalculateTotals(doc: Document): { net: number; gross: number } {
   const lines = findAllByLocalName(doc, 'G_SG26')
 
   let totalNet = 0
@@ -108,6 +108,11 @@ function recalculateTotals(doc: Document): void {
       sg52.parentNode?.removeChild(sg52)
     }
   }
+
+  return {
+    net: Math.round(totalNet * 100) / 100,
+    gross: Math.round(totalGross * 100) / 100,
+  }
 }
 
 export function buildDerivedXml(parsed: ParsedInvoice, keepCategory: 'water' | 'waste', selectedLineIds: Set<string>) {
@@ -138,7 +143,7 @@ export function buildDerivedXml(parsed: ParsedInvoice, keepCategory: 'water' | '
   })
 
   // Recalculate totals and VAT breakdown from remaining lines only
-  recalculateTotals(doc)
+  const totals = recalculateTotals(doc)
 
   // Waste invoice gets -01 suffix to avoid duplicate invoice number conflict
   if (keepCategory === 'waste') {
@@ -152,5 +157,5 @@ export function buildDerivedXml(parsed: ParsedInvoice, keepCategory: 'water' | '
 
   const serialized = new XMLSerializer().serializeToString(doc)
   const body = serialized.replace(/^<\?xml[^?]*\?>\s*/i, '')
-  return `<?xml version="1.0" encoding="utf-8"?>\n${body}`
+  return { xml: `<?xml version="1.0" encoding="utf-8"?>\n${body}`, net: totals.net, gross: totals.gross }
 }

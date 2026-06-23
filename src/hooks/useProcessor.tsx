@@ -11,6 +11,8 @@ export interface OutputFile {
   filename: string
   content: string | Uint8Array
   type: 'water' | 'waste' | 'report'
+  net?: number
+  gross?: number
 }
 
 export interface FileEntry {
@@ -85,12 +87,12 @@ export function useProcessor() {
         }
       })
       if (waterLineIds.size > 0) {
-        const xml = buildDerivedXml(parsed, 'water', waterLineIds)
-        entry.outputs.push({ filename: file.name.replace(/\.xml$/i, '') + '_water.xml', content: xml, type: 'water' })
+        const { xml, net, gross } = buildDerivedXml(parsed, 'water', waterLineIds)
+        entry.outputs.push({ filename: file.name.replace(/\.xml$/i, '') + '_water.xml', content: xml, type: 'water', net, gross })
       }
       if (wasteLineIds.size > 0) {
-        const xml = buildDerivedXml(parsed, 'waste', wasteLineIds)
-        entry.outputs.push({ filename: file.name.replace(/\.xml$/i, '') + '_waste.xml', content: xml, type: 'waste' })
+        const { xml, net, gross } = buildDerivedXml(parsed, 'waste', wasteLineIds)
+        entry.outputs.push({ filename: file.name.replace(/\.xml$/i, '') + '_waste.xml', content: xml, type: 'waste', net, gross })
       }
       const pickMost = (map: Record<string, number>) => {
         const entries = Object.entries(map)

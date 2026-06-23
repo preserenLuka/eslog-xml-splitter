@@ -42,6 +42,12 @@ export default function ExportPanel({ files, onDownloadAll, highlightSourceId, o
                 className={`mb-2 p-2 rounded ${highlight ? 'bg-blue-50 border border-blue-200' : ''}`}
               >
                 <div className="font-medium">{o.filename}</div>
+                {(o.net != null || o.gross != null) && (
+                  <div className="mt-1 text-xs text-gray-500 flex gap-3">
+                    {o.net != null && <span>Brez DDV: <span className="font-medium text-gray-700">{o.net.toFixed(2)} €</span></span>}
+                    {o.gross != null && <span>Z DDV: <span className="font-medium text-gray-700">{o.gross.toFixed(2)} €</span></span>}
+                  </div>
+                )}
                 <div className="mt-1">
                   <a
                     className="text-blue-600 flex items-center gap-1 hover:underline w-fit"
