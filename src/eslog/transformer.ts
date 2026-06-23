@@ -1,5 +1,7 @@
 import { ParsedInvoice } from './types'
 
+const ESLOG_NS = 'urn:eslog:2.00'
+
 export function cloneDocument(doc: Document) {
   return doc.cloneNode(true) as Document
 }
@@ -58,6 +60,49 @@ function getMoaEl(container: Element, code: string): Element | null {
 }
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100)
+
+function makeMeterRef(doc: Document, qualifier: string, value: string): Element {
+  const g = doc.createElementNS(ESLOG_NS, 'G_SG30')
+  const rff = doc.createElementNS(ESLOG_NS, 'S_RFF')
+  const c = doc.createElementNS(ESLOG_NS, 'C_C506')
+  const q = doc.createElementNS(ESLOG_NS, 'D_1153')
+  const v = doc.createElementNS(ESLOG_NS, 'D_1154')
+  q.textContent = qualifier
+  v.textContent = value
+  c.appendChild(q); c.appendChild(v)
+  rff.appendChild(c); g.appendChild(rff)
+  return g
+}
+
+// All waste lines get the same dominant AWE/AVE so iot.petrol.si groups them under one MM
+function unifyWasteMeterRefs(doc: Document): void {
+  const lines = findAllByLocalName(doc, 'G_SG26')
+
+  const aweCount: Record<string, number> = {}
+  const aveCount: Record<string, number> = {}
+  for (const line of lines) {
+    for (const sg30 of findAllIn(line, 'G_SG30')) {
+      const qual = findIn(sg30, 'D_1153')?.textContent?.trim()
+      const val = findIn(sg30, 'D_1154')?.textContent?.trim()
+      if (!val) continue
+      if (qual === 'AWE') aweCount[val] = (aweCount[val] || 0) + 1
+      if (qual === 'AVE') aveCount[val] = (aveCount[val] || 0) + 1
+    }
+  }
+
+  const topAWE = Object.entries(aweCount).sort((a, b) => b[1] - a[1])[0]?.[0]
+  const topAVE = Object.entries(aveCount).sort((a, b) => b[1] - a[1])[0]?.[0]
+  if (!topAWE && !topAVE) return
+
+  for (const line of lines) {
+    const sg30s = findAllIn(line, 'G_SG30')
+    const hasAWE = sg30s.some(s => findIn(s, 'D_1153')?.textContent?.trim() === 'AWE')
+    const hasAVE = sg30s.some(s => findIn(s, 'D_1153')?.textContent?.trim() === 'AVE')
+    const anchor = findIn(line, 'G_SG34')
+    if (!hasAWE && topAWE) line.insertBefore(makeMeterRef(doc, 'AWE', topAWE), anchor)
+    if (!hasAVE && topAVE) line.insertBefore(makeMeterRef(doc, 'AVE', topAVE), anchor)
+  }
+}
 
 function recalculateTotals(doc: Document): { net: number; gross: number } {
   const lines = findAllByLocalName(doc, 'G_SG26')
@@ -141,6 +186,9 @@ export function buildDerivedXml(parsed: ParsedInvoice, keepCategory: 'water' | '
       if (el.localName === 'D_1082') { el.textContent = String(idx + 1); break }
     }
   })
+
+  // Ensure all waste lines share the dominant meter reference (some lines lack AWE/AVE)
+  if (keepCategory === 'waste') unifyWasteMeterRefs(doc)
 
   // Recalculate totals and VAT breakdown from remaining lines only
   const totals = recalculateTotals(doc)
