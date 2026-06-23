@@ -53,6 +53,13 @@ export function buildDerivedXml(parsed: ParsedInvoice, keepCategory: 'water' | '
     }
   })
 
+  if (keepCategory === 'waste') {
+    const invoiceNumEl = findAllByLocalName(doc, 'D_1004')[0]
+    if (invoiceNumEl && invoiceNumEl.textContent) {
+      invoiceNumEl.textContent = invoiceNumEl.textContent.trim() + '-01'
+    }
+  }
+
   removeSignature(doc)
 
   const serialized = new XMLSerializer().serializeToString(doc)
