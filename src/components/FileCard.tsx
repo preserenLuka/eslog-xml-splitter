@@ -1,6 +1,48 @@
 import React from 'react'
-import { Info } from 'lucide-react'
+import { Info, CheckCircle2, AlertCircle } from 'lucide-react'
 import { FileEntry } from '../hooks/useProcessor'
+
+const TOLERANCE = 0.02
+
+function VerificationBadge({ file }: { file: FileEntry }) {
+  const splits = file.outputs.filter(o => o.net != null && o.gross != null)
+  if (splits.length === 0 || (file.totalNet == null && file.totalGross == null)) return null
+
+  const sumNet = splits.reduce((s, o) => s + (o.net ?? 0), 0)
+  const sumGross = splits.reduce((s, o) => s + (o.gross ?? 0), 0)
+  const netOk = file.totalNet == null || Math.abs(sumNet - file.totalNet) <= TOLERANCE
+  const grossOk = file.totalGross == null || Math.abs(sumGross - file.totalGross) <= TOLERANCE
+  const ok = netOk && grossOk
+
+  const netParts = splits.map(o => o.net?.toFixed(2)).join(' + ')
+  const grossParts = splits.map(o => o.gross?.toFixed(2)).join(' + ')
+
+  return (
+    <span className="relative group flex-shrink-0">
+      {ok
+        ? <CheckCircle2 size={15} className="text-green-500 cursor-default" />
+        : <AlertCircle size={15} className="text-red-400 cursor-default" />
+      }
+      <div className="absolute right-0 bottom-full mb-2 w-72 bg-gray-900 text-white text-xs rounded-lg p-3 hidden group-hover:block z-50 shadow-xl pointer-events-none">
+        <div className="font-semibold mb-2">{ok ? '✓ Vrednosti preverjene' : '✗ Vrednosti se ne ujemajo'}</div>
+        {file.totalNet != null && (
+          <div className="mb-1 font-mono">
+            <span className="text-gray-400">Brez DDV: </span>
+            {netParts} = <span className={netOk ? 'text-green-400' : 'text-red-400'}>{sumNet.toFixed(2)}</span>
+            <span className="text-gray-400"> (orig: {file.totalNet.toFixed(2)})</span>
+          </div>
+        )}
+        {file.totalGross != null && (
+          <div className="font-mono">
+            <span className="text-gray-400">Z DDV:    </span>
+            {grossParts} = <span className={grossOk ? 'text-green-400' : 'text-red-400'}>{sumGross.toFixed(2)}</span>
+            <span className="text-gray-400"> (orig: {file.totalGross.toFixed(2)})</span>
+          </div>
+        )}
+      </div>
+    </span>
+  )
+}
 
 export default function FileCard({ file, hovered, onHover, onLeave }: { file: FileEntry; hovered?: boolean; onHover: (id: string)=>void; onLeave: ()=>void }) {
   const color = file.status === 'processing' || file.status === 'pending' ? 'bg-yellow-100' : file.status === 'done' ? 'bg-green-50' : file.status === 'failed' ? 'bg-red-50' : 'bg-gray-100'
@@ -24,6 +66,7 @@ export default function FileCard({ file, hovered, onHover, onLeave }: { file: Fi
           )}
         </div>
         <div className="text-sm flex items-center gap-2">
+          {file.status === 'done' && <VerificationBadge file={file} />}
           <button title="Info" className="text-gray-400 hover:text-gray-600 transition-colors" onClick={()=>setShowInfo(s=>!s)}>
             <Info size={16} />
           </button>
