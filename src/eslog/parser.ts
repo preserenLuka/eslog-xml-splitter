@@ -111,6 +111,18 @@ export function parseEslogXml(xmlText: string, filename?: string): ParsedInvoice
     }
   })
 
+  // Extract invoice totals from G_SG50 summary (code 79 = net, code 9 = gross)
+  let totalNet: number | undefined
+  let totalGross: number | undefined
+  findAllDesc(doc, 'G_SG50').forEach((sg50) => {
+    const code = findDesc(sg50, 'D_5025')?.textContent?.trim()
+    const val = parseFloat(findDesc(sg50, 'D_5004')?.textContent?.trim() || '')
+    if (!isNaN(val)) {
+      if (code === '79') totalNet = val
+      if (code === '9') totalGross = val
+    }
+  })
+
   return {
     filename,
     doc,
@@ -118,6 +130,8 @@ export function parseEslogXml(xmlText: string, filename?: string): ParsedInvoice
     issueDate: undefined,
     periodStart,
     periodEnd,
-    lines
+    lines,
+    totalNet,
+    totalGross
   }
 }

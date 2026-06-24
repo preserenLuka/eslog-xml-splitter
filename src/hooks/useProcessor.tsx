@@ -21,6 +21,8 @@ export interface FileEntry {
   status: FileStatus
   message?: string
   outputs: OutputFile[]
+  totalNet?: number
+  totalGross?: number
   detectedReference?: {
     water?: { AWE?: string | null; AVE?: string | null; confidence?: number }
     waste?: { AWE?: string | null; AVE?: string | null; confidence?: number }
@@ -109,7 +111,7 @@ export function useProcessor() {
         waste: { AWE: wasteAwePick?.val ?? null, AVE: wasteAvePick?.val ?? null, confidence: Math.max(wasteAwePick?.confidence || 0, wasteAvePick?.confidence || 0) }
       }
       entry.lines = lineSummaries
-      setFiles((s) => s.map((x) => x.id === entry.id ? { ...x, status: 'done', outputs: entry.outputs, detectedReference: entry.detectedReference, lines: entry.lines } : x))
+      setFiles((s) => s.map((x) => x.id === entry.id ? { ...x, status: 'done', outputs: entry.outputs, detectedReference: entry.detectedReference, lines: entry.lines, totalNet: parsed.totalNet, totalGross: parsed.totalGross } : x))
     } catch (err: any) {
       setFiles((s) => s.map((x) => x.id === entry.id ? { ...x, status: 'failed', message: err?.message || String(err) } : x))
     }

@@ -24,4 +24,6 @@ export interface ParsedInvoice {
   periodStart?: string | null
   periodEnd?: string | null
   lines: LineItem[]
+  totalNet?: number
+  totalGross?: number
 }

@@ -16,6 +16,12 @@ export default function FileCard({ file, hovered, onHover, onLeave }: { file: Fi
         <div>
           <div className="font-medium">{file.name}</div>
           <div className="text-sm text-gray-600">{file.message || file.status}</div>
+          {file.status === 'done' && (file.totalNet != null || file.totalGross != null) && (
+            <div className="text-xs text-gray-500 flex gap-3 mt-0.5">
+              {file.totalNet != null && <span>Brez DDV: <span className="font-medium text-gray-700">{file.totalNet.toFixed(2)} €</span></span>}
+              {file.totalGross != null && <span>Z DDV: <span className="font-medium text-gray-700">{file.totalGross.toFixed(2)} €</span></span>}
+            </div>
+          )}
         </div>
         <div className="text-sm flex items-center gap-2">
           <button title="Info" className="text-gray-400 hover:text-gray-600 transition-colors" onClick={()=>setShowInfo(s=>!s)}>
