@@ -50,6 +50,8 @@ test('realistic mixed invoice produces 166.22 EUR water and excludes 286.92 EUR 
   expect(output.xml).not.toContain('UrL 80/12 ČN')
   expect(output.xml).toContain('<D_1154>200000001.000.1</D_1154>')
   expect(output.xml).not.toContain('<D_1154>200000001.200000001</D_1154>')
+  expect(output.xml).toContain('<D_7143>SA</D_7143>')
+  expect(output.xml).not.toContain('<D_7143>UP</D_7143>')
   const reparsed = parseEslogXml(output.xml)
   expect(reparsed.invoiceNumber).toBe('TEST-MESANI-001')
   expect(reparsed.lines).toHaveLength(7)

@@ -154,6 +154,14 @@ function removeSignature(doc: Document): void {
 function normalizePetrolFields(doc: Document, source: ParsedInvoice, category: 'water' | 'waste'): void {
   if (!supportsSupplier(source.supplier, builtInKomunalaNovoMesto)) return
   for (const group of direct(message(doc), 'G_SG26')) {
+    const supplierItemCodes = new Set(direct(group, 'S_PIA')
+      .filter((pia) => text(pia, 'D_7143') === 'SA')
+      .map((pia) => text(pia, 'D_7140'))
+      .filter((value): value is string => Boolean(value)))
+    for (const pia of direct(group, 'S_PIA')) {
+      const itemCode = text(pia, 'D_7140')
+      if (text(pia, 'D_7143') === 'UP' && itemCode && supplierItemCodes.has(itemCode)) pia.remove()
+    }
     const description = first(group, 'D_7008')
     if (description?.textContent) {
       description.textContent = normalizeKomunalaDescription(description.textContent)

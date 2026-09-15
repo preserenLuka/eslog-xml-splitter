@@ -24,7 +24,7 @@ export interface Profile {
   filenamePrefix?: string | null
 }
 
-export const RULESET_VERSION = '4'
+export const RULESET_VERSION = '5'
 
 export const builtInKomunalaNovoMesto: Profile = {
   id: 'komunala-novo-mesto',
