@@ -1,6 +1,7 @@
 import Decimal from 'decimal.js'
 import { builtInKomunalaNovoMesto, Category, ResolvedCategory, supportsSupplier } from './classifier'
 import { normalizeKomunalaDescription } from './descriptionNormalizer'
+import { normalizeKomunalaWaterMeterReference } from './meterNormalizer'
 import { ParsedInvoice, TaxGroup } from './types'
 import { decimalOrNull, taxKey } from './validator'
 
@@ -150,12 +151,20 @@ function removeSignature(doc: Document): void {
   for (let index = signatures.length - 1; index >= 0; index--) signatures[index].remove()
 }
 
-function normalizeLineDescriptions(doc: Document, source: ParsedInvoice): void {
+function normalizePetrolFields(doc: Document, source: ParsedInvoice, category: 'water' | 'waste'): void {
   if (!supportsSupplier(source.supplier, builtInKomunalaNovoMesto)) return
   for (const group of direct(message(doc), 'G_SG26')) {
     const description = first(group, 'D_7008')
     if (description?.textContent) {
       description.textContent = normalizeKomunalaDescription(description.textContent)
+    }
+    if (category !== 'water') continue
+    for (const reference of allByLocalName(group, 'C_C506')) {
+      const qualifier = text(reference, 'D_1153')
+      const value = first(reference, 'D_1154')
+      if ((qualifier === 'AWE' || qualifier === 'AVE') && value?.textContent) {
+        value.textContent = normalizeKomunalaWaterMeterReference(value.textContent)
+      }
     }
   }
 }
@@ -289,7 +298,7 @@ export function buildDerivedXml(
     const id = first(group, 'D_1082')
     if (id) id.textContent = String(index + 1)
   })
-  normalizeLineDescriptions(doc, parsed)
+  normalizePetrolFields(doc, parsed, keepCategory)
   updateAdjustments(doc, parsed, keepCategory, plan)
   const vat = rebuildTaxSummaries(doc, parsed, keptIndexes, keepCategory, plan)
   const result = updateSummary(doc, plan.categories[keepCategory], vat)
