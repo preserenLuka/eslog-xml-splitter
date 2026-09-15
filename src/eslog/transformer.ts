@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js'
-import { Category, ResolvedCategory } from './classifier'
+import { builtInKomunalaNovoMesto, Category, ResolvedCategory, supportsSupplier } from './classifier'
+import { normalizeKomunalaDescription } from './descriptionNormalizer'
 import { ParsedInvoice, TaxGroup } from './types'
 import { decimalOrNull, taxKey } from './validator'
 
@@ -149,6 +150,16 @@ function removeSignature(doc: Document): void {
   for (let index = signatures.length - 1; index >= 0; index--) signatures[index].remove()
 }
 
+function normalizeLineDescriptions(doc: Document, source: ParsedInvoice): void {
+  if (!supportsSupplier(source.supplier, builtInKomunalaNovoMesto)) return
+  for (const group of direct(message(doc), 'G_SG26')) {
+    const description = first(group, 'D_7008')
+    if (description?.textContent) {
+      description.textContent = normalizeKomunalaDescription(description.textContent)
+    }
+  }
+}
+
 function makeTextElement(doc: Document, name: string, value: string): Element {
   const node = doc.createElementNS(ESLOG_NS, name)
   node.textContent = value
@@ -278,6 +289,7 @@ export function buildDerivedXml(
     const id = first(group, 'D_1082')
     if (id) id.textContent = String(index + 1)
   })
+  normalizeLineDescriptions(doc, parsed)
   updateAdjustments(doc, parsed, keepCategory, plan)
   const vat = rebuildTaxSummaries(doc, parsed, keptIndexes, keepCategory, plan)
   const result = updateSummary(doc, plan.categories[keepCategory], vat)
