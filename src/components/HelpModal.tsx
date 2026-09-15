@@ -1,118 +1,45 @@
-import React from 'react'
+import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
-const IMG = (name: string) => `/imgs/${encodeURIComponent(name)}`
-
-const steps: { title: string; text: React.ReactNode; images?: string[] }[] = [
-  {
-    title: '1. Naloži XML račune v polje za prenos',
-    text: (
-      <>
-        Račun ali račune vode povleci v polje za prenos (ali klikni <strong>Izberi datoteke</strong>).
-        Datoteke morajo biti tipa <strong>.xml</strong>. Orodje bo vsak račun parciralo in vrnilo
-        do 2 XML dokumenta — enega za <strong>smeti</strong> in enega za <strong>vodo</strong>.
-      </>
-    ),
-    images: [IMG('Dropdown-Menu.png')],
-  },
-  {
-    title: '2. Prenesi izvožene datoteke',
-    text: (
-      <>
-        Ko je obdelava končana, vsako datoteko preneseš posebej s klikom na <strong>Prenesi</strong>,
-        ali pa vse skupaj klikneš <strong>Prenesi vse končne kot ZIP</strong> — to ustvari en ZIP arhiv
-        z vsemi datotekami. Datoteke označene z rdečo so bile zavrnjene (niso XML ali so neveljavne).
-      </>
-    ),
-    images: [IMG('HomeScreen.with many xmls parced and many dennied becouse it was pdf.png')],
-  },
-  {
-    title: '3. Preveri šifro merilnega mesta',
-    text: (
-      <>
-        Pri vsakem uspešno obdelanem računu klikni gumb <strong>ⓘ</strong> (levo od besede "Končano").
-        Odpre se tooltip z razdelkom <strong>Merilna mesta</strong>, ki prikaže zaznano šifro za
-        vodo in smeti. To šifro moraš preveriti z iot.petrol.si.
-      </>
-    ),
-    images: [IMG('Open-Tooltip-Sucessful conversion.png')],
-  },
-  {
-    title: '4. Preveri šifre na iot.petrol.si',
-    text: (
-      <>
-        Na <strong>iot.petrol.si</strong> pojdi na željeno lokacijo → razdelek{' '}
-        <strong>Merilna mesta</strong> → stolpec <strong>Šifre</strong>. Preveri, da se šifra iz
-        tooltipa ujema s šifro na portalu za posamezen vir energije (voda / smeti).
-        <br />
-        <br />
-        Če merilno mesto za smeti <strong>ne obstaja</strong>, ga dodate sami na portalu ali pa
-        pišete nam:{' '}
-        <a href="mailto:luka.preseren@novomesto.si" className="text-blue-600 underline">
-          luka.preseren@novomesto.si
-        </a>
-      </>
-    ),
-    images: [IMG('iot-petrol overview page of location.png')],
-  },
-  {
-    title: '5. Naloži račune v iot.petrol.si',
-    text: (
-      <>
-        V iot.petrol.si odpri modul <strong>Naloži račune</strong> in vanj naloži vse pripravljene
-        XML datoteke. <br />
-        <br />
-        <strong>Opomba:</strong> Nekatere stranke nimajo merilnega mesta za smeti — te vnesejo samo
-        račun vode. Stranke z obema merilnima mestoma vnesejo oba računa.
-      </>
-    ),
-  },
-]
+const focusableSelector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 export default function HelpModal({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  const closeRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    closeRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
+      if (event.key !== 'Tab' || !dialogRef.current) return
+      const elements = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector))
+      if (!elements.length) return
+      const first = elements[0]
+      const last = elements[elements.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.removeEventListener('keydown', onKeyDown); previous?.focus() }
+  }, [onClose])
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div className="bg-white rounded-lg shadow-xl flex flex-col"
-        style={{ width: '60vw', height: '80vh' }}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
-          <h2 className="text-xl font-bold">Navodila za uporabo</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-            title="Zapri"
-          >
-            <X size={22} />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="help-title" aria-describedby="help-intro" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
+          <h2 id="help-title" className="text-xl font-bold">Navodila za uporabo</h2>
+          <button ref={closeRef} type="button" onClick={onClose} className="icon-button" aria-label="Zapri navodila"><X size={21} aria-hidden="true" /></button>
         </div>
-
-        {/* Content */}
-        <div className="overflow-y-auto flex-1 px-6 py-4">
-          <p className="text-gray-600 mb-6">
-            Za pravilen vnos računov vode v sistem iot.petrol.si sledite spodnjim korakom.
-          </p>
-
-          <div className="flex flex-col gap-10">
-            {steps.map((step, i) => (
-              <div key={i} className="flex flex-col gap-3">
-                <h3 className="text-base font-semibold text-gray-800 border-l-4 border-blue-500 pl-3">
-                  {step.title}
-                </h3>
-                <p className="text-sm text-gray-700 leading-relaxed">{step.text}</p>
-                {step.images?.map((src, j) => (
-                  <img
-                    key={j}
-                    src={src}
-                    alt={`Korak ${i + 1}`}
-                    className="rounded border shadow-sm max-h-[500px] w-full object-contain"
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
+        <div className="overflow-y-auto px-4 py-5 sm:px-6">
+          <p id="help-intro" className="text-slate-600">Račun pripravite za uvoz v petih korakih.</p>
+          <ol className="mt-5 space-y-6">
+            <li><h3 className="step-title">1. Naložite račune XML</h3><p className="step-text">Povlecite enega ali več računov v polje za nalaganje ali kliknite »Izberi datoteke XML«. Orodje preveri vsebino in vsak račun prikaže v seznamu.</p></li>
+            <li><h3 className="step-title">2. Preglejte vodne postavke</h3><p className="step-text">Odprite postavke računa ter preverite znesek vode, izločene odpadke in vodno merilno mesto. Neznano postavko označite kot »Voda«, »Odpadki« ali »Namerno izpusti«. Izbira velja samo do osvežitve strani.</p></li>
+            <li><h3 className="step-title">3. Potrdite opozorila</h3><p className="step-text">Račun z opozorili ostane v stanju »Potreben pregled«. Preberite posledice in potrdite nadaljevanje. Tehnične napake izvoza ni mogoče potrditi.</p></li>
+            <li><h3 className="step-title">4. Prenesite vodo</h3><p className="step-text">Kliknite »Prenesi vodo za uvoz«. ZIP vsebuje samo pripravljene vodne XML ter kontrolno poročilo v oblikah JSON in CSV.</p></li>
+            <li><h3 className="step-title">5. Uvozite v iot.petrol.si</h3><p className="step-text">Vodni XML iz mape <code>voda</code> uvozite v modul za nalaganje računov na iot.petrol.si. Po potrebi je v »Dodatnih možnostih« na voljo ločen paket za odpadke.</p></li>
+          </ol>
         </div>
       </div>
     </div>

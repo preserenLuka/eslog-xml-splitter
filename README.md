@@ -1,41 +1,44 @@
-# eSLOG Utility Splitter
+# Razdelilnik računov eSLOG za vodo
 
-Browser-only React/TypeScript app for splitting Slovenian eSLOG utility invoices into separate water and waste XML files.
+Brskalniška aplikacija pripravi vodni del računov eSLOG za uvoz v `iot.petrol.si`. Obdelava poteka samo v pomnilniku trenutne strani. Privzeti ZIP vsebuje vodne XML in kontrolni poročili; odpadkovni paket se izdela ločeno v dodatnih možnostih.
 
-## Features
+## Postopek
 
-- Drag-and-drop XML upload
-- Parses and classifies eSLOG invoice line items
-- Generates separate `water` and `waste` XML exports
-- Highlights source/import file when hovering exports and vice versa
-- Downloads all outputs as a ZIP archive
-- Runs fully in the browser without backend services
+1. Naložite enega ali več računov XML.
+2. Preglejte vodni znesek, izločene odpadke, neznane postavke in merilna mesta.
+3. Neznane postavke ročno označite kot vodo, odpadke ali namerni izpust. Opozorila pred izvozom izrecno potrdite.
+4. Prenesite »Vodo za uvoz« in uvozite XML iz mape `voda` v `iot.petrol.si`.
 
-## Run
+Tehnično neveljaven XML, neveljavni denarni podatki in podvojeni identifikatorji postavk blokirajo izvoz. Identični SHA-256 dvojniki se izpustijo. Sporna vsebina ostane v stanju »Potreben pregled«.
+
+## Izhod
+
+Vodni paket:
+
+```text
+voda/*.xml
+porocila/seznam.json
+porocila/seznam.csv
+```
+
+Ločeni odpadkovni paket uporablja mapo `odpadki`. Vodni XML ohrani izvorno številko računa, odpadkovni XML pa dobi pripono `-01`. Digitalni podpis se iz izpeljanega dokumenta odstrani.
+
+## Razvoj
 
 ```bash
 npm install
 npm run dev
-```
-
-## Build
-
-```bash
+npm test
+npm run typecheck
 npm run build
 ```
 
-## Test
+Testi vključujejo anonimizirana realistična računa ter preverjanje vhodnih in ustvarjenih dokumentov z uradno shemo eSLOG 2.0. Za XSD test mora biti na voljo Python z modulom `lxml`; v okolju Codex se samodejno uporabi priloženi Python.
 
-```bash
-npm test
-```
+Glavni deli projekta:
 
-## Project Structure
-
-- `src/` — React UI, hooks, parser/classifier/transformer logic
-- `tests/` — unit tests for parsing, transform, validation, and ZIP export
-- `fixtures/` — sample XML invoices for testing
-
-## Notes
-
-Output XML preserves the original invoice structure and removes digital signatures so the derived file remains compatible with downstream eSLOG tooling.
+- `src/eslog` – razčlenjevanje, razvrščanje, validacija, delitev in denarni izračuni;
+- `src/hooks/useProcessor.tsx` – paketna obdelava, dvojniki, opozorila in izvozi;
+- `src/components` – uporabniški pregled računov in postavk;
+- `fixtures/realistic` – anonimizirana regresijska vzorca;
+- `tests/schema` – uradna XSD eSLOG 2.0 in shema XMLDSig.

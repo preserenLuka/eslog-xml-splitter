@@ -1,17 +1,17 @@
-export function csvEscape(v: string | number | null | undefined) {
-  if (v === null || v === undefined) return ''
-  const s = String(v)
-  // Prefix formula-starting chars to prevent spreadsheet injection (OWASP)
-  const safe = /^[=+\-@\t]/.test(s) ? `'${s}` : s
-  if (safe.includes(',') || safe.includes('\n') || safe.includes('"')) return '"' + safe.replace(/"/g, '""') + '"'
-  return safe
+export function csvEscape(value: string | number | boolean | null | undefined) {
+  if (value === null || value === undefined) return ''
+  const raw = String(value)
+  const safe = /^[=+\-@\t]/.test(raw) ? `'${raw}` : raw
+  return `"${safe.replace(/"/g, '""')}"`
 }
 
-export function buildProcessingReport(rows: Record<string, any>[]) {
-  const headers = Object.keys(rows[0] || {})
-  const lines = [headers.join(',')]
-  rows.forEach((r) => {
-    lines.push(headers.map((h) => csvEscape(r[h])).join(','))
-  })
-  return lines.join('\n')
+export function buildProcessingReport(rows: Record<string, unknown>[]) {
+  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row))))
+  const lines = [headers.map(csvEscape).join(';')]
+  for (const row of rows) lines.push(headers.map((header) => csvEscape(row[header] as string | number | boolean | null | undefined)).join(';'))
+  return `\uFEFF${lines.join('\r\n')}`
+}
+
+export function buildJsonReport(metadata: Record<string, unknown>, inputs: Record<string, unknown>[]) {
+  return JSON.stringify({ ...metadata, inputs }, null, 2)
 }

@@ -1,209 +1,292 @@
-import { ParsedInvoice } from './types'
+import Decimal from 'decimal.js'
+import { Category, ResolvedCategory } from './classifier'
+import { ParsedInvoice, TaxGroup } from './types'
+import { decimalOrNull, taxKey } from './validator'
 
 const ESLOG_NS = 'urn:eslog:2.00'
+const CATEGORIES: Category[] = ['water', 'waste', 'unknown']
 
-export function cloneDocument(doc: Document) {
-  return doc.cloneNode(true) as Document
+export interface CategoryAmounts {
+  lineNet: string
+  lineVat: string
+  lineGross: string
+  allowances: string
+  charges: string
+  prepaid: string
+  rounding: string
 }
 
-function removeSignature(doc: Document) {
-  const sig = doc.getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'Signature')
-  for (let i = sig.length - 1; i >= 0; i--) {
-    sig[i].parentNode?.removeChild(sig[i])
-  }
+export interface AllocationPlan {
+  categories: Record<Category, CategoryAmounts>
+  adjustmentAmounts: Record<number, Record<Category, string>>
 }
 
-function findAllByLocalName(doc: Document, localName: string): Element[] {
-  const out: Element[] = []
-  const all = doc.getElementsByTagName('*')
-  for (let i = 0; i < all.length; i++) {
-    if ((all[i] as Element).localName === localName) out.push(all[i] as Element)
-  }
-  return out
+export interface DerivedXmlResult {
+  xml: string
+  net: number
+  vat: number
+  gross: number
+  payable: number
 }
 
-function findIn(el: Element, localName: string): Element | null {
-  const nodes = el.getElementsByTagName('*')
-  for (let i = 0; i < nodes.length; i++) {
-    if ((nodes[i] as Element).localName === localName) return nodes[i] as Element
-  }
-  return null
+const zeroAmounts = (): CategoryAmounts => ({
+  lineNet: '0.00', lineVat: '0.00', lineGross: '0.00', allowances: '0.00',
+  charges: '0.00', prepaid: '0.00', rounding: '0.00',
+})
+const money = (value: Decimal.Value) => new Decimal(value).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2)
+const decimal = (value?: string) => decimalOrNull(value) || new Decimal(0)
+
+function allByLocalName(el: Element | Document, localName: string): Element[] {
+  return Array.from(el.getElementsByTagName('*')).filter((node) => node.localName === localName)
 }
 
-function findAllIn(el: Element, localName: string): Element[] {
-  const out: Element[] = []
-  const nodes = el.getElementsByTagName('*')
-  for (let i = 0; i < nodes.length; i++) {
-    if ((nodes[i] as Element).localName === localName) out.push(nodes[i] as Element)
-  }
-  return out
+function direct(el: Element, localName: string): Element[] {
+  return Array.from(el.children).filter((node) => node.localName === localName)
 }
 
-// Returns numeric value of S_MOA with given D_5025 code inside container
-function getMoaValue(container: Element, code: string): number {
-  for (const moa of findAllIn(container, 'S_MOA')) {
-    if (findIn(moa, 'D_5025')?.textContent?.trim() === code) {
-      return parseFloat(findIn(moa, 'D_5004')?.textContent?.trim() || '0') || 0
-    }
-  }
-  return 0
+function first(el: Element | Document, localName: string): Element | null {
+  return allByLocalName(el, localName)[0] || null
 }
 
-// Returns the D_5004 element of S_MOA with given D_5025 code inside container
+function text(el: Element | Document, localName: string): string | undefined {
+  return first(el, localName)?.textContent?.trim() || undefined
+}
+
+function message(doc: Document): Element {
+  return direct(doc.documentElement, 'M_INVOIC')[0] || doc.documentElement
+}
+
 function getMoaEl(container: Element, code: string): Element | null {
-  for (const moa of findAllIn(container, 'S_MOA')) {
-    if (findIn(moa, 'D_5025')?.textContent?.trim() === code) {
-      return findIn(moa, 'D_5004')
-    }
+  for (const moa of allByLocalName(container, 'S_MOA')) {
+    if (text(moa, 'D_5025') === code) return first(moa, 'D_5004')
   }
   return null
 }
 
-const fmt = (n: number) => String(Math.round(n * 100) / 100)
-
-function makeMeterRef(doc: Document, qualifier: string, value: string): Element {
-  const g = doc.createElementNS(ESLOG_NS, 'G_SG30')
-  const rff = doc.createElementNS(ESLOG_NS, 'S_RFF')
-  const c = doc.createElementNS(ESLOG_NS, 'C_C506')
-  const q = doc.createElementNS(ESLOG_NS, 'D_1153')
-  const v = doc.createElementNS(ESLOG_NS, 'D_1154')
-  q.textContent = qualifier
-  v.textContent = value
-  c.appendChild(q); c.appendChild(v)
-  rff.appendChild(c); g.appendChild(rff)
-  return g
+function setMoaValue(container: Element, code: string, value: string): void {
+  const element = getMoaEl(container, code)
+  if (element) element.textContent = value
 }
 
-// All waste lines get the same dominant AWE/AVE so iot.petrol.si groups them under one MM
-function unifyWasteMeterRefs(doc: Document): void {
-  const lines = findAllByLocalName(doc, 'G_SG26')
-
-  const aweCount: Record<string, number> = {}
-  const aveCount: Record<string, number> = {}
-  for (const line of lines) {
-    for (const sg30 of findAllIn(line, 'G_SG30')) {
-      const qual = findIn(sg30, 'D_1153')?.textContent?.trim()
-      const val = findIn(sg30, 'D_1154')?.textContent?.trim()
-      if (!val) continue
-      if (qual === 'AWE') aweCount[val] = (aweCount[val] || 0) + 1
-      if (qual === 'AVE') aveCount[val] = (aveCount[val] || 0) + 1
-    }
-  }
-
-  const topAWE = Object.entries(aweCount).sort((a, b) => b[1] - a[1])[0]?.[0]
-  const topAVE = Object.entries(aveCount).sort((a, b) => b[1] - a[1])[0]?.[0]
-  if (!topAWE && !topAVE) return
-
-  for (const line of lines) {
-    const sg30s = findAllIn(line, 'G_SG30')
-    const hasAWE = sg30s.some(s => findIn(s, 'D_1153')?.textContent?.trim() === 'AWE')
-    const hasAVE = sg30s.some(s => findIn(s, 'D_1153')?.textContent?.trim() === 'AVE')
-    const anchor = findIn(line, 'G_SG34')
-    if (!hasAWE && topAWE) line.insertBefore(makeMeterRef(doc, 'AWE', topAWE), anchor)
-    if (!hasAVE && topAVE) line.insertBefore(makeMeterRef(doc, 'AVE', topAVE), anchor)
-  }
+function distribute(value: string | undefined, weights: Record<Category, Decimal>): Record<Category, string> {
+  const result: Record<Category, string> = { water: '0.00', waste: '0.00', unknown: '0.00' }
+  const totalValue = decimal(value)
+  const active = CATEGORIES.filter((category) => weights[category].greaterThan(0))
+  const totalWeight = active.reduce((sum, category) => sum.plus(weights[category]), new Decimal(0))
+  if (active.length === 0 || totalWeight.isZero() || totalValue.isZero()) return result
+  let assigned = new Decimal(0)
+  active.forEach((category, index) => {
+    const part = index === active.length - 1
+      ? totalValue.minus(assigned)
+      : totalValue.times(weights[category]).dividedBy(totalWeight).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    result[category] = money(part)
+    assigned = assigned.plus(part)
+  })
+  return result
 }
 
-function recalculateTotals(doc: Document): { net: number; gross: number } {
-  const lines = findAllByLocalName(doc, 'G_SG26')
-
-  let totalNet = 0
-  let totalGross = 0
-  // vatMap keyed by rate string — groups all categories at same rate (matching G_SG52 structure)
-  const vatMap: Record<string, { base: number; vat: number; rate: string; category: string }> = {}
-
-  for (const line of lines) {
-    totalNet += getMoaValue(line, '203')
-    totalGross += getMoaValue(line, '66')
-
-    for (const sg34 of findAllIn(line, 'G_SG34')) {
-      const rate = findIn(sg34, 'D_5278')?.textContent?.trim() || '0'
-      const category = findIn(sg34, 'D_5305')?.textContent?.trim() || 'S'
-      if (!vatMap[rate]) vatMap[rate] = { base: 0, vat: 0, rate, category }
-      vatMap[rate].base += getMoaValue(sg34, '125')
-      vatMap[rate].vat += getMoaValue(sg34, '124')
-    }
+export function buildAllocationPlan(
+  parsed: ParsedInvoice,
+  assignments: Map<number, ResolvedCategory>,
+): AllocationPlan {
+  const categories: Record<Category, CategoryAmounts> = {
+    water: zeroAmounts(), waste: zeroAmounts(), unknown: zeroAmounts(),
+  }
+  const weights: Record<Category, Decimal> = { water: new Decimal(0), waste: new Decimal(0), unknown: new Decimal(0) }
+  for (const line of parsed.lines) {
+    const resolved = assignments.get(line.internalIndex) || 'unknown'
+    const category: Category = resolved === 'water' || resolved === 'waste' ? resolved : 'unknown'
+    const values = categories[category]
+    values.lineNet = money(decimal(values.lineNet).plus(decimal(line.net)))
+    values.lineVat = money(decimal(values.lineVat).plus(decimal(line.vat)))
+    values.lineGross = money(decimal(values.lineGross).plus(decimal(line.gross)))
+    weights[category] = weights[category].plus(decimal(line.gross))
   }
 
-  const totalVat = Object.values(vatMap).reduce((s, v) => s + v.vat, 0)
-
-  // Update G_SG50 summary amounts
-  const grossCodes = new Set(['9', '86', '388'])
-  const netCodes = new Set(['79', '125', '129', '389', '98'])
-
-  for (const sg50 of findAllByLocalName(doc, 'G_SG50')) {
-    const code = findIn(sg50, 'D_5025')?.textContent?.trim()
-    const d5004 = getMoaEl(sg50, code || '')
-    if (!code || !d5004) continue
-    if (grossCodes.has(code)) d5004.textContent = fmt(totalGross)
-    else if (netCodes.has(code)) d5004.textContent = fmt(totalNet)
-    else if (code === '176') d5004.textContent = fmt(totalVat)
-    // codes 53, 400 (prepaid/advance = 0) left unchanged
-  }
-
-  // Update G_SG52 VAT breakdown per rate; remove entries for rates absent in remaining lines
-  for (const sg52 of findAllByLocalName(doc, 'G_SG52')) {
-    const rate = findIn(sg52, 'D_5278')?.textContent?.trim() || '0'
-    if (vatMap[rate]) {
-      const vatEl = getMoaEl(sg52, '124')
-      const baseEl = getMoaEl(sg52, '125')
-      if (vatEl) vatEl.textContent = fmt(vatMap[rate].vat)
-      if (baseEl) baseEl.textContent = fmt(vatMap[rate].base)
-    } else {
-      sg52.parentNode?.removeChild(sg52)
-    }
-  }
-
-  return {
-    net: Math.round(totalNet * 100) / 100,
-    gross: Math.round(totalGross * 100) / 100,
-  }
-}
-
-export function buildDerivedXml(parsed: ParsedInvoice, keepCategory: 'water' | 'waste', selectedLineIds: Set<string>) {
-  const doc = cloneDocument(parsed.doc)
-
-  // Remove lines not belonging to this category
-  findAllByLocalName(doc, 'G_SG26').forEach((g) => {
-    const idEl = (function find(el: Element | null): Element | null {
-      if (!el) return null
-      const nodes = el.getElementsByTagName('*')
-      for (let i = 0; i < nodes.length; i++) {
-        if ((nodes[i] as Element).localName === 'D_1082') return nodes[i] as Element
-      }
-      return null
-    })(g)
-    if (!selectedLineIds.has(idEl?.textContent?.trim() || '')) {
-      g.parentNode?.removeChild(g)
+  const adjustmentAmounts: Record<number, Record<Category, string>> = {}
+  parsed.adjustments.forEach((adjustment, index) => {
+    const parts = distribute(adjustment.amount, weights)
+    adjustmentAmounts[index] = parts
+    for (const category of CATEGORIES) {
+      const field = adjustment.kind === 'allowance' ? 'allowances' : 'charges'
+      categories[category][field] = money(decimal(categories[category][field]).plus(parts[category]))
     }
   })
-
-  // Renumber remaining lines sequentially
-  findAllByLocalName(doc, 'G_SG26').forEach((g, idx) => {
-    const nodes = g.getElementsByTagName('*')
-    for (let i = 0; i < nodes.length; i++) {
-      const el = nodes[i] as Element
-      if (el.localName === 'D_1082') { el.textContent = String(idx + 1); break }
+  if (parsed.adjustments.length === 0) {
+    const allowances = distribute(parsed.totals.allowances, weights)
+    const charges = distribute(parsed.totals.charges, weights)
+    for (const category of CATEGORIES) {
+      categories[category].allowances = allowances[category]
+      categories[category].charges = charges[category]
     }
+  }
+  const prepaid = distribute(parsed.totals.prepaid, weights)
+  const rounding = distribute(parsed.totals.rounding, weights)
+  for (const category of CATEGORIES) {
+    categories[category].prepaid = prepaid[category]
+    categories[category].rounding = rounding[category]
+  }
+  return { categories, adjustmentAmounts }
+}
+
+function asAssignments(
+  parsed: ParsedInvoice,
+  keepCategory: 'water' | 'waste',
+  input: Map<number, ResolvedCategory> | Set<number> | Set<string>,
+): Map<number, ResolvedCategory> {
+  if (input instanceof Map) return input
+  const values = input as Set<number | string>
+  return new Map(parsed.lines.map((line) => [
+    line.internalIndex,
+    values.has(line.internalIndex) || values.has(line.lineId)
+      ? keepCategory
+      : keepCategory === 'water' ? 'waste' : 'water',
+  ]))
+}
+
+function removeSignature(doc: Document): void {
+  const signatures = doc.getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'Signature')
+  for (let index = signatures.length - 1; index >= 0; index--) signatures[index].remove()
+}
+
+function makeTextElement(doc: Document, name: string, value: string): Element {
+  const node = doc.createElementNS(ESLOG_NS, name)
+  node.textContent = value
+  return node
+}
+
+function makeMoa(doc: Document, code: string, value: string): Element {
+  const moa = doc.createElementNS(ESLOG_NS, 'S_MOA')
+  const composite = doc.createElementNS(ESLOG_NS, 'C_C516')
+  composite.append(makeTextElement(doc, 'D_5025', code), makeTextElement(doc, 'D_5004', value))
+  moa.append(composite)
+  return moa
+}
+
+function makeTaxSummary(doc: Document, group: TaxGroup, base: string, tax: string): Element {
+  const summary = doc.createElementNS(ESLOG_NS, 'G_SG52')
+  const taxNode = doc.createElementNS(ESLOG_NS, 'S_TAX')
+  taxNode.append(makeTextElement(doc, 'D_5283', '7'))
+  const type = doc.createElementNS(ESLOG_NS, 'C_C241')
+  type.append(makeTextElement(doc, 'D_5153', group.taxType))
+  taxNode.append(type)
+  const rate = doc.createElementNS(ESLOG_NS, 'C_C243')
+  rate.append(makeTextElement(doc, 'D_5278', new Decimal(group.rate || 0).toString()))
+  taxNode.append(rate)
+  if (group.category) taxNode.append(makeTextElement(doc, 'D_5305', group.category))
+  summary.append(taxNode, makeMoa(doc, '124', tax), makeMoa(doc, '125', base))
+  return summary
+}
+
+function rebuildTaxSummaries(doc: Document, source: ParsedInvoice, keptIndexes: Set<number>, category: Category, plan: AllocationPlan): string {
+  const taxGroups = new Map<string, { group: TaxGroup; base: Decimal; tax: Decimal }>()
+  for (const line of source.lines) {
+    if (!keptIndexes.has(line.internalIndex)) continue
+    for (const group of line.taxGroups) {
+      if (group.base === undefined && group.tax === undefined) continue
+      const key = taxKey(group)
+      const current = taxGroups.get(key) || { group, base: new Decimal(0), tax: new Decimal(0) }
+      current.base = current.base.plus(decimal(group.base))
+      current.tax = current.tax.plus(decimal(group.tax))
+      taxGroups.set(key, current)
+    }
+  }
+
+  source.adjustments.forEach((adjustment, index) => {
+    if (!adjustment.tax) return
+    const amount = decimal(plan.adjustmentAmounts[index]?.[category])
+    if (amount.isZero()) return
+    const key = taxKey(adjustment.tax)
+    const current = taxGroups.get(key) || { group: adjustment.tax, base: new Decimal(0), tax: new Decimal(0) }
+    const signedBase = adjustment.kind === 'allowance' ? amount.negated() : amount
+    const signedTax = signedBase.times(decimal(adjustment.tax.rate)).dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    current.base = current.base.plus(signedBase)
+    current.tax = current.tax.plus(signedTax)
+    taxGroups.set(key, current)
   })
 
-  // Ensure all waste lines share the dominant meter reference (some lines lack AWE/AVE)
-  if (keepCategory === 'waste') unifyWasteMeterRefs(doc)
+  const rootMessage = message(doc)
+  direct(rootMessage, 'G_SG52').forEach((node) => node.remove())
+  const insertBefore = direct(rootMessage, 'G_SG53')[0] || direct(rootMessage, 'S_UNT')[0] || null
+  for (const item of taxGroups.values()) {
+    rootMessage.insertBefore(makeTaxSummary(doc, item.group, money(item.base), money(item.tax)), insertBefore)
+  }
+  return money(Array.from(taxGroups.values()).reduce((sum, item) => sum.plus(item.tax), new Decimal(0)))
+}
 
-  // Recalculate totals and VAT breakdown from remaining lines only
-  const totals = recalculateTotals(doc)
+function updateAdjustments(doc: Document, source: ParsedInvoice, category: Category, plan: AllocationPlan): void {
+  const groups = direct(message(doc), 'G_SG16')
+  const recognized = new Map(source.adjustments.map((adjustment, index) => [adjustment.internalIndex, { adjustment, index }]))
+  groups.forEach((group, sourceIndex) => {
+    const item = recognized.get(sourceIndex)
+    if (!item) return
+    const allocated = plan.adjustmentAmounts[item.index]?.[category] || '0.00'
+    if (decimal(allocated).isZero()) {
+      group.remove()
+      return
+    }
+    setMoaValue(group, item.adjustment.kind === 'allowance' ? '204' : '23', allocated)
+    const original = decimal(item.adjustment.amount)
+    const originalBase = decimal(item.adjustment.base)
+    if (!original.isZero() && !originalBase.isZero()) {
+      setMoaValue(group, '25', money(originalBase.times(decimal(allocated)).dividedBy(original)))
+    }
+    const taxGroup = direct(group, 'G_SG22')[0]
+    if (taxGroup && item.adjustment.tax) {
+      const allocatedTaxBase = decimal(allocated)
+      const allocatedTax = allocatedTaxBase.times(decimal(item.adjustment.tax.rate))
+        .dividedBy(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+      setMoaValue(taxGroup, '125', money(allocatedTaxBase))
+      setMoaValue(taxGroup, '124', money(allocatedTax))
+    }
+  })
+}
 
-  // Waste invoice gets -01 suffix to avoid duplicate invoice number conflict
+function updateSummary(doc: Document, amounts: CategoryAmounts, vat: string): DerivedXmlResult {
+  const lineNet = decimal(amounts.lineNet)
+  const allowances = decimal(amounts.allowances)
+  const charges = decimal(amounts.charges)
+  const taxExclusive = lineNet.minus(allowances).plus(charges)
+  const taxInclusive = taxExclusive.plus(decimal(vat))
+  const payable = taxInclusive.minus(decimal(amounts.prepaid)).plus(decimal(amounts.rounding))
+  const values: Record<string, string> = {
+    '79': money(lineNet), '260': money(allowances), '259': money(charges),
+    '389': money(taxExclusive), '125': money(taxExclusive), '129': money(taxExclusive), '98': money(taxExclusive),
+    '2': money(vat), '176': money(vat), '388': money(taxInclusive), '86': money(taxInclusive),
+    '113': money(amounts.prepaid), '366': money(amounts.rounding), '9': money(payable),
+  }
+  for (const group of direct(message(doc), 'G_SG50')) {
+    const code = text(group, 'D_5025')
+    if (code && values[code] !== undefined) setMoaValue(group, code, values[code])
+  }
+  return { xml: '', net: taxExclusive.toNumber(), vat: decimal(vat).toNumber(), gross: taxInclusive.toNumber(), payable: payable.toNumber() }
+}
+
+export function buildDerivedXml(
+  parsed: ParsedInvoice,
+  keepCategory: 'water' | 'waste',
+  inputAssignments: Map<number, ResolvedCategory> | Set<number> | Set<string>,
+): DerivedXmlResult {
+  const assignments = asAssignments(parsed, keepCategory, inputAssignments)
+  const plan = buildAllocationPlan(parsed, assignments)
+  const doc = parsed.doc.cloneNode(true) as Document
+  const keptIndexes = new Set(parsed.lines.filter((line) => assignments.get(line.internalIndex) === keepCategory).map((line) => line.internalIndex))
+  direct(message(doc), 'G_SG26').forEach((group, index) => {
+    if (!keptIndexes.has(index)) group.remove()
+  })
+  direct(message(doc), 'G_SG26').forEach((group, index) => {
+    const id = first(group, 'D_1082')
+    if (id) id.textContent = String(index + 1)
+  })
+  updateAdjustments(doc, parsed, keepCategory, plan)
+  const vat = rebuildTaxSummaries(doc, parsed, keptIndexes, keepCategory, plan)
+  const result = updateSummary(doc, plan.categories[keepCategory], vat)
   if (keepCategory === 'waste') {
-    const invoiceNumEl = findAllByLocalName(doc, 'D_1004')[0]
-    if (invoiceNumEl?.textContent) {
-      invoiceNumEl.textContent = invoiceNumEl.textContent.trim() + '-01'
-    }
+    const invoiceNumber = first(doc, 'D_1004')
+    if (invoiceNumber?.textContent) invoiceNumber.textContent = `${invoiceNumber.textContent.trim()}-01`
   }
-
   removeSignature(doc)
-
-  const serialized = new XMLSerializer().serializeToString(doc)
-  const body = serialized.replace(/^<\?xml[^?]*\?>\s*/i, '')
-  return { xml: `<?xml version="1.0" encoding="utf-8"?>\n${body}`, net: totals.net, gross: totals.gross }
+  const serialized = new XMLSerializer().serializeToString(doc).replace(/^<\?xml[^?]*\?>\s*/i, '')
+  result.xml = `<?xml version="1.0" encoding="utf-8"?>\n${serialized}`
+  return result
 }
